@@ -22,7 +22,7 @@ This is a python script designed to validate layer 3 connectivity across the bac
 
 Hostname,Backend IP
 
-```csv
+```txt
 YOURNODE1,10.0.1.1
 YOURNODE1,10.0.1.2
 YOURNODE1,10.0.1.3
