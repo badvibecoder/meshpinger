@@ -1,0 +1,49 @@
+---
+# tasks file for meshpinger
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: /var/tmp/meshpinger
+    state: directory
+    mode: '0755'
+
+- name: Deploy meshpinger files
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /var/tmp/meshpinger/
+    mode: '0755'
+  loop:
+    - meshpinger.py
+    - nodes.csv
+
+- name: Find old log files for cleanup
+  ansible.builtin.find:
+    paths: /var/tmp/meshpinger
+    patterns: "*pingtest-*.log"
+  register: old_logs
+
+- name: Remove old log files from remote host
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ old_logs.files }}"
+
+- name: Execute meshpinger script
+  ansible.builtin.shell:
+    cmd: python3 meshpinger.py --csv nodes.csv --fail-only
+    chdir: /var/tmp/meshpinger
+  register: meshpinger_run
+  changed_when: true
+
+- name: Find the generated log file
+  ansible.builtin.find:
+    paths: /var/tmp/meshpinger
+    patterns: "*pingtest-*.log"
+  register: found_logs
+
+- name: Fetch log files back to the controller
+  ansible.builtin.fetch:
+    src: "{{ item.path }}"
+    dest: "{{ role_path }}/files/logs/"
+    flat: yes
+  loop: "{{ found_logs.files }}"

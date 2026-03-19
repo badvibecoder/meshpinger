@@ -1,0 +1,6 @@
+---
+
+- name: Ping All To All
+  hosts: all
+  roles:
+    - meshpinger
