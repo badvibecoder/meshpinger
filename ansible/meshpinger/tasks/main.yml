@@ -3,22 +3,35 @@
 
 - name: Create application directory
   ansible.builtin.file:
-    path: /var/tmp/meshpinger
+    path: "{{ meshpinger_remote_work_dir }}"
     state: directory
     mode: '0755'
 
 - name: Deploy meshpinger files
   ansible.builtin.copy:
     src: "{{ item }}"
-    dest: /var/tmp/meshpinger/
+    dest: "{{ meshpinger_remote_work_dir }}/"
     mode: '0755'
   loop:
     - meshpinger.py
-    - nodes.csv
+    - "{{ meshpinger_csv_filename }}"
+
+- name: Ensure controller-side JSON staging directory exists
+  ansible.builtin.file:
+    path: "{{ meshpinger_controller_staging_dir }}"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+  run_once: true
+
+- name: Remove old JSON artifacts from remote host
+  ansible.builtin.file:
+    path: "{{ meshpinger_remote_work_dir }}/{{ inventory_hostname }}-pingtest-results.json"
+    state: absent
 
 - name: Find old log files for cleanup
   ansible.builtin.find:
-    paths: /var/tmp/meshpinger
+    paths: "{{ meshpinger_remote_work_dir }}"
     patterns: "*pingtest-*.log"
   register: old_logs
 
@@ -29,21 +42,34 @@
   loop: "{{ old_logs.files }}"
 
 - name: Execute meshpinger script
-  ansible.builtin.shell:
-    cmd: python3 meshpinger.py --csv nodes.csv --fail-only
-    chdir: /var/tmp/meshpinger
+  ansible.builtin.command:
+    cmd: >-
+      python3 meshpinger.py
+      --csv {{ meshpinger_csv_filename }}
+      --threads {{ meshpinger_threads }}
+      --json-output {{ inventory_hostname }}-pingtest-results.json
+      {% if meshpinger_fail_only %}--fail-only{% endif %}
+    chdir: "{{ meshpinger_remote_work_dir }}"
   register: meshpinger_run
   changed_when: true
 
+- name: Fetch per-host JSON artifact back to the controller
+  ansible.builtin.fetch:
+    src: "{{ meshpinger_remote_work_dir }}/{{ inventory_hostname }}-pingtest-results.json"
+    dest: "{{ meshpinger_controller_staging_dir }}/"
+    flat: true
+
 - name: Find the generated log file
   ansible.builtin.find:
-    paths: /var/tmp/meshpinger
+    paths: "{{ meshpinger_remote_work_dir }}"
     patterns: "*pingtest-*.log"
   register: found_logs
+  when: meshpinger_keep_legacy_logs
 
-- name: Fetch log files back to the controller
+- name: Fetch log files back to the controller when enabled
   ansible.builtin.fetch:
     src: "{{ item.path }}"
-    dest: "{{ role_path }}/files/logs/"
+    dest: "{{ meshpinger_artifact_root }}/{{ meshpinger_report_run_id }}/legacy-logs/"
     flat: yes
   loop: "{{ found_logs.files }}"
+  when: meshpinger_keep_legacy_logs

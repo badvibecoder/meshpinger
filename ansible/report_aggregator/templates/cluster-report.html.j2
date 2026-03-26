@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ report_aggregator_title }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+    h1, h2 { margin-bottom: 8px; }
+    .meta, .summary { margin-bottom: 20px; }
+    .meta code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(100px, 1fr)); gap: 12px; max-width: 620px; }
+    .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fafafa; }
+    .card .label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+    .card .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+    .controls { margin: 16px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f9fafb; }
+    tr.fail-row { background: #fff7ed; }
+    .status-fail { color: #b91c1c; font-weight: 700; text-transform: uppercase; }
+    .status-error { color: #7c2d12; font-weight: 700; text-transform: uppercase; }
+    .status-pass { color: #166534; font-weight: 700; text-transform: uppercase; }
+    .node-block { margin-top: 24px; }
+    .node-head { display: flex; align-items: center; gap: 12px; }
+    .muted { color: #6b7280; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>{{ report_aggregator_title }}</h1>
+  <div class="meta">
+    <div>Run ID: <code>{{ report_aggregator_cluster_report.run_metadata.run_id }}</code></div>
+    <div>Generated: <code>{{ report_aggregator_cluster_report.run_metadata.generated_at }}</code></div>
+    <div>Cluster: <code>{{ report_aggregator_cluster_report.run_metadata.cluster_label }}</code></div>
+  </div>
+
+  <h2>Cluster Summary</h2>
+  <div class="summary summary-grid">
+    <div class="card"><div class="label">Total</div><div class="value">{{ report_aggregator_cluster_report.checks.meshpinger.total }}</div></div>
+    <div class="card"><div class="label">Pass</div><div class="value">{{ report_aggregator_cluster_report.checks.meshpinger.pass }}</div></div>
+    <div class="card"><div class="label">Fail</div><div class="value">{{ report_aggregator_cluster_report.checks.meshpinger.fail }}</div></div>
+    <div class="card"><div class="label">Error</div><div class="value">{{ report_aggregator_cluster_report.checks.meshpinger.error }}</div></div>
+  </div>
+
+  <h2>Node Failures</h2>
+  <div class="controls">
+    <label for="nodeFilter">Node:</label>
+    <select id="nodeFilter">
+      <option value="all">All nodes</option>
+      {% for node in report_aggregator_cluster_report.nodes %}
+      <option value="{{ node.node }}">{{ node.node }}</option>
+      {% endfor %}
+    </select>
+    <label><input type="checkbox" id="failedOnly" checked> Failed/Error only</label>
+  </div>
+
+  <table id="failureTable">
+    <thead>
+      <tr>
+        <th>Node</th>
+        <th>Status</th>
+        <th>Source IP</th>
+        <th>Target IP</th>
+        <th>Return Code</th>
+        <th>Error</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for node in report_aggregator_cluster_report.nodes %}
+        {% for result in node.failures %}
+      <tr class="fail-row" data-node="{{ node.node }}" data-status="{{ result.status }}">
+        <td>{{ node.node }}</td>
+        <td class="status-{{ result.status }}">{{ result.status }}</td>
+        <td>{{ result.source_ip }}</td>
+        <td>{{ result.target_ip }}</td>
+        <td>{{ result.return_code if result.return_code is not none else '' }}</td>
+        <td>{{ result.error | default('') }}</td>
+      </tr>
+        {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="node-block">
+    <h2>Per-Node Summary</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Node</th>
+          <th>Total</th>
+          <th>Pass</th>
+          <th>Fail</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for node in report_aggregator_cluster_report.nodes %}
+        <tr>
+          <td>{{ node.node }}</td>
+          <td>{{ node.summary.total }}</td>
+          <td>{{ node.summary.pass }}</td>
+          <td>{{ node.summary.fail }}</td>
+          <td>{{ node.summary.error }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted">Tip: use the node selector and failed-only toggle to narrow down problem paths quickly.</p>
+  </div>
+
+  <script>
+    (function () {
+      var nodeFilter = document.getElementById("nodeFilter");
+      var failedOnly = document.getElementById("failedOnly");
+      var rows = Array.prototype.slice.call(document.querySelectorAll("#failureTable tbody tr"));
+
+      function applyFilters() {
+        var selectedNode = nodeFilter.value;
+        var onlyFailures = failedOnly.checked;
+
+        rows.forEach(function (row) {
+          var rowNode = row.getAttribute("data-node");
+          var status = row.getAttribute("data-status");
+          var nodeMatch = selectedNode === "all" || rowNode === selectedNode;
+          var statusMatch = !onlyFailures || status === "fail" || status === "error";
+          row.style.display = nodeMatch && statusMatch ? "" : "none";
+        });
+      }
+
+      nodeFilter.addEventListener("change", applyFilters);
+      failedOnly.addEventListener("change", applyFilters);
+      applyFilters();
+    })();
+  </script>
+</body>
+</html>

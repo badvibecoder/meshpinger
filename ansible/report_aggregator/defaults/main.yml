@@ -1,0 +1,11 @@
+---
+report_aggregator_artifact_root: "{{ playbook_dir }}/artifacts"
+report_aggregator_run_id: "{{ meshpinger_report_run_id | default(lookup('pipe', 'date +%Y%m%d-%H%M%S')) }}"
+report_aggregator_report_name: "{{ meshpinger_report_name | default('cluster-report') }}"
+report_aggregator_cluster_label: all
+report_aggregator_title: "Mesh Connectivity Report"
+
+report_aggregator_host_artifact_dir: "{{ report_aggregator_artifact_root }}/{{ report_aggregator_run_id }}/hosts"
+report_aggregator_output_dir: "{{ report_aggregator_artifact_root }}/{{ report_aggregator_run_id }}"
+report_aggregator_json_output_path: "{{ report_aggregator_output_dir }}/{{ report_aggregator_report_name }}.json"
+report_aggregator_html_output_path: "{{ report_aggregator_output_dir }}/{{ report_aggregator_report_name }}.html"

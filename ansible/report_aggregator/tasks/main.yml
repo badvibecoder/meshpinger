@@ -1,0 +1,75 @@
+---
+- name: Ensure report output directory exists
+  ansible.builtin.file:
+    path: "{{ report_aggregator_output_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Find per-host JSON artifacts
+  ansible.builtin.find:
+    paths: "{{ report_aggregator_host_artifact_dir }}"
+    patterns: "*-pingtest-results.json"
+    file_type: file
+  register: report_aggregator_host_json_files
+
+- name: Fail when no host JSON artifacts are present
+  ansible.builtin.fail:
+    msg: "No per-host meshpinger JSON artifacts found in {{ report_aggregator_host_artifact_dir }}"
+  when: report_aggregator_host_json_files.matched | int == 0
+
+- name: Initialize host report list
+  ansible.builtin.set_fact:
+    report_aggregator_host_reports: []
+
+- name: Load per-host JSON reports
+  ansible.builtin.set_fact:
+    report_aggregator_host_reports: "{{ report_aggregator_host_reports + [lookup('file', item.path) | from_json] }}"
+  loop: "{{ report_aggregator_host_json_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Build normalized node report list
+  ansible.builtin.set_fact:
+    report_aggregator_nodes: "{{ report_aggregator_nodes | default([]) + [node_entry] }}"
+  vars:
+    node_entry:
+      node: "{{ item.run_metadata.hostname | default('unknown') }}"
+      summary:
+        total: "{{ item.summary.total | default(0) | int }}"
+        pass: "{{ item.summary.pass | default(0) | int }}"
+        fail: "{{ item.summary.fail | default(0) | int }}"
+        error: "{{ item.summary.error | default(0) | int }}"
+      failures: "{{ (item.results | default([])) | selectattr('status', 'in', ['fail', 'error']) | list }}"
+      result_count: "{{ (item.results | default([])) | length }}"
+  loop: "{{ report_aggregator_host_reports }}"
+  loop_control:
+    label: "{{ item.run_metadata.hostname | default('unknown') }}"
+
+- name: Compute cluster totals and report envelope
+  ansible.builtin.set_fact:
+    report_aggregator_cluster_report:
+      run_metadata:
+        generated_at: "{{ lookup('pipe', 'date -Iseconds') }}"
+        report_title: "{{ report_aggregator_title }}"
+        run_id: "{{ report_aggregator_run_id }}"
+        cluster_label: "{{ report_aggregator_cluster_label }}"
+        playbook: "{{ ansible_play_name | default('site.yml') }}"
+      nodes: "{{ report_aggregator_nodes | sort(attribute='node') }}"
+      checks:
+        meshpinger:
+          total: "{{ report_aggregator_nodes | map(attribute='summary.total') | map('int') | sum }}"
+          pass: "{{ report_aggregator_nodes | map(attribute='summary.pass') | map('int') | sum }}"
+          fail: "{{ report_aggregator_nodes | map(attribute='summary.fail') | map('int') | sum }}"
+          error: "{{ report_aggregator_nodes | map(attribute='summary.error') | map('int') | sum }}"
+
+- name: Write aggregated cluster report JSON
+  ansible.builtin.copy:
+    dest: "{{ report_aggregator_json_output_path }}"
+    content: "{{ report_aggregator_cluster_report | to_nice_json }}"
+    mode: "0644"
+
+- name: Render cluster HTML report
+  ansible.builtin.template:
+    src: cluster-report.html.j2
+    dest: "{{ report_aggregator_html_output_path }}"
+    mode: "0644"

@@ -1,6 +1,27 @@
 ---
+- name: Initialize report run metadata
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Set report run ID once per playbook execution
+      ansible.builtin.set_fact:
+        meshpinger_report_run_id_global: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
 
-- name: Ping All To All
+- name: Run mesh ping checks on targets
   hosts: all
+  gather_facts: false
+  vars:
+    meshpinger_report_run_id: "{{ hostvars['localhost']['meshpinger_report_run_id_global'] }}"
   roles:
     - meshpinger
+
+- name: Aggregate mesh ping artifacts into cluster report
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    report_aggregator_run_id: "{{ hostvars['localhost']['meshpinger_report_run_id_global'] }}"
+    report_aggregator_cluster_label: "{{ (groups['all'] | default([])) | join(',') }}"
+  roles:
+    - report_aggregator

@@ -1,38 +1,39 @@
-Role Name
-=========
+# meshpinger role
 
-A brief description of the role goes here.
+Runs meshpinger on each target host, emits per-host JSON test results, and fetches those artifacts to the controller for cluster-level aggregation.
 
-Requirements
-------------
+## Requirements
 
-Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance, if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
+- `python3` and `ping` available on target hosts.
+- `nodes.csv` in the role files directory (or set `meshpinger_csv_filename` to another deployed file).
 
-Role Variables
---------------
+## Variables
 
-A description of the settable variables for this role should go here, including any variables that are in defaults/main.yml, vars/main.yml, and any variables that can/should be set via parameters to the role. Any variables that are read from other roles and/or the global scope (ie. hostvars, group vars, etc.) should be mentioned here as well.
+Defaults are defined in `defaults/main.yml`.
 
-Dependencies
-------------
+- `meshpinger_remote_work_dir`: remote working directory for script/files.
+- `meshpinger_csv_filename`: CSV copied to remote and passed to meshpinger.
+- `meshpinger_fail_only`: when `true`, suppresses PASS lines in text logs.
+- `meshpinger_threads`: worker thread count for ping execution.
+- `meshpinger_artifact_root`: controller-side root for run artifacts.
+- `meshpinger_report_run_id`: run identifier used for artifact directory layout.
+- `meshpinger_report_name`: base name for aggregated report outputs.
+- `meshpinger_controller_staging_dir`: controller path for fetched per-host JSON.
+- `meshpinger_keep_legacy_logs`: fetch text logs to `legacy-logs/` when `true`.
 
-A list of other roles hosted on Galaxy should go here, plus any details in regards to parameters that may need to be set for other roles, or variables that are used from other roles.
+## Artifact layout
 
-Example Playbook
-----------------
+For a run ID `20260326-140501`, artifacts are written under:
 
-Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
+- `ansible/artifacts/20260326-140501/hosts/*.json` (fetched per-host results)
+- `ansible/artifacts/20260326-140501/legacy-logs/*.log` (optional, when enabled)
 
-    - hosts: servers
-      roles:
-         - { role: username.rolename, x: 42 }
+## Per-host JSON schema
 
-License
--------
+Each host writes `<inventory_hostname>-pingtest-results.json` with:
 
-BSD
+- `run_metadata`: host, timestamp, execution options, source/target counts.
+- `summary`: `total`, `pass`, `fail`, `error`.
+- `results[]`: detailed entries with `source_ip`, `target_ip`, `status`, `return_code`, and error/debug fields.
 
-Author Information
-------------------
-
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+Status values are `pass`, `fail`, or `error`.

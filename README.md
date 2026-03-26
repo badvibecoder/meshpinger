@@ -77,6 +77,18 @@ Usage: `python3 meshpinger.py --csv mylistofnodes.csv --fail-only --threads 3`
 
 ### Ansible
 
-I have an example of using this in an ansible role to deploy and scale out to many servers.
+The `ansible/site.yml` playbook now:
+
+1. runs `meshpinger` on all targets and fetches per-host JSON artifacts, then
+2. runs `report_aggregator` on the controller to produce:
+   - `ansible/artifacts/<run_id>/cluster-report.json`
+   - `ansible/artifacts/<run_id>/cluster-report.html`
+
+The aggregated JSON uses an extensible envelope:
+
+- `run_metadata`
+- `nodes`
+- `checks.meshpinger`
+- `checks.<future_role_name>` (reserved namespace for additional checks)
 
 <a href="ansible\">Here</a>
