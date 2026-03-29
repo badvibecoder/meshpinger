@@ -1,15 +1,2 @@
 ---
 # defaults file for meshpinger
-meshpinger_remote_work_dir: /var/tmp/meshpinger
-meshpinger_csv_filename: nodes.csv
-meshpinger_fail_only: true
-meshpinger_threads: 5
-
-# Report artifact layout
-meshpinger_artifact_root: "{{ playbook_dir }}/artifacts"
-meshpinger_report_run_id: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
-meshpinger_report_name: cluster-report
-meshpinger_controller_staging_dir: "{{ meshpinger_artifact_root }}/{{ meshpinger_report_run_id }}/hosts"
-
-# Legacy text logs are optional; JSON artifacts are always fetched.
-meshpinger_keep_legacy_logs: false
