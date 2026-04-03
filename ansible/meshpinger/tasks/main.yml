@@ -11,7 +11,8 @@
   ansible.builtin.pip:
     name: PyYAML
     state: present
-    break_system_packages: yes
+    extra_args: --break-system-packages
+  # break_system_packages: yes
   # Note: If deploying to the air-gapped nodes, replace the above task 
   # with the .whl copy/install method
 
@@ -46,7 +47,7 @@
 
 - name: Execute meshpinger script
   ansible.builtin.shell:
-    cmd: python3 meshpinger.py --yaml nodes.yaml
+    cmd: python3 meshpinger.py --yaml nodes.yaml --fail-only
     chdir: /var/tmp/meshpinger
   register: meshpinger_run
   changed_when: true
