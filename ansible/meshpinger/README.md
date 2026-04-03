@@ -1,38 +1,74 @@
-Role Name
-=========
+# Ansible Role: meshpinger
 
-A brief description of the role goes here.
+An Ansible role to deploy, execute, and retrieve results from the `meshpinger` tool. This role automates the full-mesh network validation of backend cluster interfaces.
 
-Requirements
-------------
+## Role Description
 
-Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance, if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
+This role performs the following operations:
+1.  **Environment Prep:** Ensures `python3-pip` and `PyYAML` are installed on target nodes.
+2.  **Deployment:** Pushes the `meshpinger.py` script and the `nodes.yaml` inventory to a temporary working directory (`/var/tmp/meshpinger`).
+3.  **Cleanup:** Removes any stale `.log` or `.json` results from previous runs to ensure data integrity.
+4.  **Execution:** Runs the mesh test. The script identifies the local node's backend IPs and pings all other nodes' backend IPs defined in the YAML.
+5.  **Data Collection:** Fetches the resulting structured JSON files from all remote nodes back to the Ansible controller for central analysis.
 
-Role Variables
---------------
+## Variables
 
-A description of the settable variables for this role should go here, including any variables that are in defaults/main.yml, vars/main.yml, and any variables that can/should be set via parameters to the role. Any variables that are read from other roles and/or the global scope (ie. hostvars, group vars, etc.) should be mentioned here as well.
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `meshpinger_dir` | `/var/tmp/meshpinger` | The working directory on the remote nodes. |
+| `meshpinger_threads` | `5` | Number of concurrent ping threads per node. |
+| `meshpinger_fail_only` | `false` | If `true`, only failures are recorded in the JSON output. |
 
-Dependencies
-------------
+## File Structure
 
-A list of other roles hosted on Galaxy should go here, plus any details in regards to parameters that may need to be set for other roles, or variables that are used from other roles.
+The role expects the following files to be present in the `files/` directory of the role:
+* `meshpinger.py`: The Python script.
+* `nodes.yaml`: The master network inventory.
 
-Example Playbook
-----------------
+```text
+roles/meshpinger/
+├── files/
+│   ├── meshpinger.py
+│   ├── nodes.yaml
+│   └── logs/           # Results from remote nodes will be fetched here
+├── tasks/
+│   └── main.yml
+└── README.md
+```
 
-Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
+## Example Playbook
 
-    - hosts: servers
-      roles:
-         - { role: username.rolename, x: 42 }
+```yaml
+- hosts: backend_nodes
+  become: yes
+  roles:
+    - role: meshpinger
+      vars:
+        meshpinger_threads: 10
+        meshpinger_fail_only: true
+```
 
-License
--------
+## Result Aggregation
 
-BSD
+After the playbook completes, all JSON files are stored on the Ansible controller at:
+`{{ role_path }}/files/logs/`
 
-Author Information
-------------------
+The files follow the naming convention: `{{ inventory_hostname }}-pingtest-YYYYMMDD-HHMM.json`.
 
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+### Why JSON?
+By fetching JSON files instead of flat text, you can easily run a post-processing script on the controller to merge all results into a single report. Because each JSON file uses the hostname as the top-level key, these files are "deep-merge" ready.
+
+## Air-Gapped Installation (Optional)
+
+If your nodes do not have internet access, you must manually place the `PyYAML` wheel (`.whl`) file in the `files/` directory and update the `pip` task in `tasks/main.yml` to install from the local file:
+
+```yaml
+- name: Install PyYAML from local wheel
+  ansible.builtin.pip:
+    name: "/var/tmp/meshpinger/PyYAML-6.0.1-cp39-cp39-linux_x86_64.whl"
+    state: present
+```
+
+## Author Information
+
+Created for cluster backend network validation.
