@@ -5,3 +5,11 @@
       tags: meshpinger
     - role: eterrors
       tags: eterrors
+
+- name: Aggregate results on the controller
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  roles:
+    - role: aggregator
+      tags: aggregator

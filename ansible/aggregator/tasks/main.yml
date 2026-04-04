@@ -1,0 +1,39 @@
+---
+# tasks file for aggregator
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: /var/tmp/aggregator
+    state: directory
+    mode: '0755'
+
+- name: Find old eterrors JSON files for cleanup
+  ansible.builtin.find:
+    paths: /var/tmp/aggregator
+    patterns: "aggregator-*.json"
+  register: old_logs
+
+- name: Remove old files from remote host
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ old_logs.files }}"
+
+- name: Run local aggregation script
+  ansible.builtin.script:
+    cmd: aggregator.py
+  args:
+    executable: python3
+
+- name: Find the newly created report for tracking
+  ansible.builtin.find:
+    paths: /var/tmp/aggregator
+    patterns: "aggregator-*.json"
+  register: found_results
+
+- name: Fetch JSON result files back to the controller
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ role_path }}/files/logs/"
+    flat: yes
+  loop: "{{ found_results.files }}"
