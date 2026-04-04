@@ -37,3 +37,14 @@
     dest: "{{ role_path }}/files/logs/"
     remote_src: yes
   loop: "{{ found_results.files }}"
+
+- name: Generate the HTML report on the controller
+  delegate_to: localhost
+  become: no
+  ansible.builtin.command:
+    cmd: python3 "{{ role_path }}/files/generate_report.py"
+  register: report_gen
+
+- name: Show report generation status
+  ansible.builtin.debug:
+    msg: "{{ report_gen.stdout }}"
