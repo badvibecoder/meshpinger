@@ -1,26 +1,24 @@
 ---
-# tasks file for meshpinger
-- name: Install pip on Debian/Ubuntu
+- name: Ensure Python 3 venv and pip are installed
   ansible.builtin.apt:
-    name: python3-pip
+    name: 
+      - python3-pip
+      - python3-venv  # Required for the pip virtualenv command
     state: present
     update_cache: yes
   become: yes
-
-- name: Install PyYAML using pip
-  ansible.builtin.pip:
-    name: PyYAML
-    state: present
-    extra_args: --break-system-packages
-  # break_system_packages: yes
-  # Note: If deploying to the air-gapped nodes, replace the above task 
-  # with the .whl copy/install method
 
 - name: Create application directory
   ansible.builtin.file:
     path: /var/tmp/meshpinger
     state: directory
     mode: '0755'
+
+- name: Install PyYAML in a virtual environment
+  ansible.builtin.pip:
+    name: PyYAML
+    virtualenv: /var/tmp/meshpinger/venv
+    virtualenv_command: python3 -m venv
 
 - name: Deploy meshpinger files
   ansible.builtin.copy:
@@ -45,9 +43,10 @@
     state: absent
   loop: "{{ old_logs.files }}"
 
-- name: Execute meshpinger script
+- name: Execute meshpinger script using venv
   ansible.builtin.shell:
-    cmd: python3 meshpinger.py --yaml nodes.yaml --fail-only
+    # Call the python binary inside the venv directly
+    cmd: ./venv/bin/python3 meshpinger.py --yaml nodes.yaml --fail-only
     chdir: /var/tmp/meshpinger
   register: meshpinger_run
   changed_when: true
