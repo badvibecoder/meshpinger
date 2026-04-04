@@ -1,0 +1,46 @@
+---
+# tasks file for eterrors
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: /var/tmp/ethtool_errors
+    state: directory
+    mode: '0755'
+
+- name: Deploy eterrors.py script
+  ansible.builtin.copy:
+    src: eterrors.py
+    dest: /var/tmp/ethtool_errors/
+    mode: '0755'
+
+- name: Find old eterrors JSON files for cleanup
+  ansible.builtin.find:
+    paths: /var/tmp/ethtool_errors
+    patterns: "*eterrors-*.json"
+  register: old_logs
+
+- name: Remove old files from remote host
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ old_logs.files }}"
+
+- name: Execute eterrors script
+  ansible.builtin.shell:
+    cmd: python3 eterrors.py
+    chdir: /var/tmp/ethtool_errors
+  register: eterrors_run
+  changed_when: true
+
+- name: Find the generated eterrors JSON result file
+  ansible.builtin.find:
+    paths: /var/tmp/ethtool_errors
+    patterns: "*eterrors-*.json"
+  register: found_results
+
+- name: Fetch JSON result files back to the controller
+  ansible.builtin.fetch:
+    src: "{{ item.path }}"
+    dest: "{{ role_path }}/files/logs/"
+    flat: yes
+  loop: "{{ found_results.files }}"

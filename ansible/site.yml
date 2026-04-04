@@ -1,6 +1,7 @@
 ---
-
-- name: Ping All To All
-  hosts: all
+- hosts: all
   roles:
-    - meshpinger
+    - role: meshpinger
+      tags: meshpinger
+    - role: eterrors
+      tags: eterrors

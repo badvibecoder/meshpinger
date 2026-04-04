@@ -1,125 +1,102 @@
-# meshpinger
+# Cluster Diagnostic Tools (meshpinger)
 
-`meshpinger` is a Python-based diagnostic tool designed to validate Layer 3 connectivity across high-performance back-end cluster networks. It performs a **full-mesh ping** between the local node's interfaces and all remote node interfaces specified in a YAML inventory.
+This repository contains a suite of Python-based diagnostic tools designed to validate and troubleshoot high-performance backend cluster networks. 
 
-The goal is to ensure every possible network path in the backend fabric is functional, identifying specific NIC, cable, or switch-port failures that standard "node-to-node" pings might miss.
+1. **meshpinger**: Validates Layer 3 connectivity via full-mesh ping testing.
+2. **eterrors**: Validates Layer 1/2 health by gathering hardware-level error statistics via `ethtool`.
 
-## Intent
+---
 
-  * **YAML-Driven:** Precisely defines nodes and their specific `backend` interfaces.
-  * **Interface Binding:** Uses `ping -I` to force traffic out of specific source IPs, ensuring every local NIC is tested.
-  * **Full Mesh:** Every permutation of source/destination is tested (excluding intra-node pings).
-  * **Scalability:** Designed for high-density environments.
-      * *Example:* 128 nodes with 8 NICs each = 8,128 individual path tests per node.
-      * Total mesh coverage: **Source (8 NICs) x Remote Nodes (127) x Remote NICs (8)**.
+## 1. meshpinger
 
-## Features
+`meshpinger` performs a **full-mesh ping** between a local node's interfaces and all remote node interfaces specified in a YAML inventory. It identifies specific NIC, cable, or switch-port failures that standard "node-to-node" pings might miss by forcing traffic out of specific source IPs using `ping -I`.
 
-  * **Self-Identification:** The script automatically identifies its own source IPs by matching the system's short hostname against the `name` field in the YAML.
-  * **Structured Output:** Generates deep-mergeable JSON logs for easy aggregation and analysis.
-  * **Multi-threaded:** Concurrent execution to speed up large-scale mesh tests (defaults to 5 threads).
-  * **Air-Gap Friendly:** Minimal dependencies (requires `PyYAML`).
+### Features
+* **Interface Binding:** Ensures every local NIC in the backend fabric is tested.
+* **Scalability:** Designed for high-density environments (e.g., 128 nodes x 8 NICs).
+* **Self-Identification:** Automatically matches system hostname against the `nodes.yaml` inventory.
+* **Structured Output:** Generates deep-mergeable JSON logs.
 
------
+---
+
+## 2. eterrors
+
+`eterrors` is a lightweight hardware health monitor. It dynamically discovers all active network interfaces and parses `ethtool -S` output for hardware-level errors, discards "zero-value" noise, and reports only active issues.
+
+### Intent
+While `meshpinger` tells you **if** a path is down, `eterrors` helps tell you **why** (e.g., CRC errors, drops, or pause frames indicating a bad cable or transceiver).
+
+### Features
+* **Zero-Configuration:** Automatically detects all `enp*` and other physical interfaces; no YAML required.
+* **Noise Filtering:** Only records metrics with values > 0 (errors, drops, overruns, etc.).
+* **Standardized Schema:** Uses the same JSON hierarchy as `meshpinger` for seamless log aggregation.
+
+---
 
 ## Inventory Format (`nodes.yaml`)
 
-The inventory separates `frontend` and `backend` interfaces. The script currently targets **backend** IPs for mesh testing.
+Used primarily by `meshpinger` to define the network topology.
 
 ```yaml
 ---
 nodes:
   - name: YOURNODE1
     interfaces:
-      frontend:
-        - 192.168.1.1
-      backend:
-        - 10.1.1.1
-        - 10.1.1.2
-        - 10.1.1.3
-        - 10.1.1.4
+      frontend: [192.168.1.1]
+      backend: [10.1.1.1, 10.1.1.2]
   - name: YOURNODE2
     interfaces:
-      frontend:
-        - 192.168.2.1
-      backend:
-        - 10.1.2.1
-        - 10.1.2.2
-        - 10.1.2.3
-        - 10.1.2.4
+      frontend: [192.168.2.1]
+      backend: [10.1.2.1, 10.1.2.2]
 ```
 
------
+---
 
-## Usage
+## Usage & Execution
 
 ### Prerequisites
+* **meshpinger:** Requires `PyYAML` (`pip install pyyaml`).
+* **eterrors:** Requires `ethtool` installed on the system (Standard Library only).
 
-Install the YAML parser (required for the script to read the inventory):
-
+### Running Manually
 ```bash
-pip install pyyaml
+# Run Layer 3 Mesh Test
+python3 meshpinger.py --yaml nodes.yaml --fail-only
+
+# Run Layer 1/2 Error Check
+python3 eterrors.py
 ```
 
-### Execution
-
-```bash
-python3 meshpinger.py
-```
-
-### Advanced Options
-
+### Advanced Options (meshpinger)
 | Flag | Description |
 | :--- | :--- |
-| `--yaml <file>` | Path to your inventory. Defaults to `nodes.yaml`. |
-| `--fail-only` | Suppress `[PASS]` entries in the JSON log; only record failures. |
-| `--threads <int>` | Set number of worker threads (Default: 5). *Note: Pings are CPU switched; keep this low.* |
+| `--yaml <file>` | Path to inventory. Defaults to `nodes.yaml`. |
+| `--fail-only` | Only record failures in the JSON log. |
+| `--threads <int>`| Number of worker threads (Default: 5). |
 
-**Example:**
-
-```bash
-python3 meshpinger.py --yaml site_inventory.yaml --fail-only --threads 8
-```
-
------
+---
 
 ## Results & Logging
 
-The script generates a JSON file named: `hostname-pingtest-YYYYMMDD-HHMM.json`.
+Both tools generate timestamped JSON files:
+* `hostname-pingtest-YYYYMMDD-HHMM.json`
+* `hostname-eterrors-YYYYMMDD-HHMM.json`
 
-### JSON Structure
+### Unified JSON Structure
+The output uses a hierarchical key structure (`Node > Test Category > Timestamp`) designed so that hundreds of files can be merged into a single master report for a total cluster health snapshot.
 
-The output uses a hierarchical key structure (`Node > Test Type > Timestamp`) designed for easy aggregation of hundreds of files into a single master report.
-
-```json
-{
-  "YOURNODE1": {
-    "tests": {
-      "backendpingtest": {
-        "20260403-1430": {
-          "successes": [
-            { "src": "10.1.1.1", "dst": "10.1.2.1" }
-          ],
-          "failures": [
-            { 
-              "src": "10.1.1.2", "dst": "10.1.2.2", 
-              "error": "Timeout / 100% packet loss" 
-            }
-          ]
-        }
-      }
-    }
-  }
-}
-```
-
------
+---
 
 ## Ansible Integration
 
-This tool is designed to be deployed via Ansible. An example role is provided in the `/ansible` directory which handles:
+These tools are designed for fleet-wide deployment via Ansible. The `/ansible` directory contains roles for both tools that automate:
 
-1.  Pushing the `meshpinger.py` script and `nodes.yaml`.
-2.  Installing dependencies (or `.whl` files for air-gapped nodes).
-3.  Executing the mesh test across the entire fleet simultaneously.
-4.  Fetching all JSON results back to the controller for central reporting.
+1. **Deployment:** Pushing scripts and inventories to `/var/tmp/`.
+2. **Execution:** Running tests across the entire fleet simultaneously.
+3. **Cleanup:** Removing stale logs from previous runs.
+4. **Aggregation:** Fetching all JSON results back to the controller's `files/logs/` directory for central analysis.
+
+---
+
+## Author Information
+Created for automated cluster backend network validation and hardware health monitoring.
