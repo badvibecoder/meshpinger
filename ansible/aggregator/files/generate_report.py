@@ -5,31 +5,25 @@ from datetime import datetime
 from jinja2 import Template
 
 # --- Configuration ---
-# Finds paths relative to where this script is located in the Ansible role
 BASE_DIR = os.path.dirname(__file__)
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
 REPORTS_DIR = os.path.join(BASE_DIR, "report")
 
 def get_latest_log():
-    """Finds the most recently created JSON file in the logs directory."""
     list_of_files = glob.glob(os.path.join(LOGS_DIR, "*.json"))
     if not list_of_files:
         return None
-    # Sort by creation time to get the absolute latest fetch
     return max(list_of_files, key=os.path.getctime)
 
 def generate_html():
     latest_log = get_latest_log()
-
     if not latest_log:
         print(f"Error: No log files found in {LOGS_DIR}")
         return
 
-    # Ensure the report directory exists
     if not os.path.exists(REPORTS_DIR):
         os.makedirs(REPORTS_DIR)
 
-    # Define the single filename format: report-YYYY-MM-DD-HH-MM.html
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M")
     output_filename = f"report-{timestamp}.html"
     output_path = os.path.join(REPORTS_DIR, output_filename)
@@ -37,7 +31,34 @@ def generate_html():
     with open(latest_log, 'r') as f:
         data = json.load(f)
 
-    # The HTML Template (Same high-performance NOC dashboard)
+    # --- HELPER LOGIC ---
+    def get_node_rollup_status(node_data):
+        """
+        Returns: 'red' (all fail), 'yellow' (mixed), 'green' (all pass)
+        """
+        test_results = []
+        try:
+            tests_dict = node_data.get('tests', {})
+            for test_name, test_runs in tests_dict.items():
+                # Get the latest run (the only key in the timestamped dict)
+                for ts, run_data in test_runs.items():
+                    test_results.append(run_data.get('status', 'fail'))
+        except:
+            return 'red'
+
+        if not test_results:
+            return 'red'
+        
+        passes = test_results.count('pass')
+        total = len(test_results)
+
+        if passes == total:
+            return 'green'
+        elif passes > 0:
+            return 'yellow'
+        else:
+            return 'red'
+
     template_str = """
     <!DOCTYPE html>
     <html lang="en">
@@ -54,80 +75,84 @@ def generate_html():
         </style>
     </head>
     <body class="bg-slate-950 text-slate-200 min-h-screen p-4 md:p-8">
-        <div class="max-w-6xl mx-auto" x-data="{ search: '', showOnlyFailures: false }">
+        <div class="max-w-6xl mx-auto" x-data="{ search: '', filter: 'all' }">
 
             <header class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-800 pb-6">
                 <div>
-                    <h1 class="text-3xl font-black text-white tracking-tighter">MESHPINGER <span class="text-blue-500 underline decoration-blue-500/30">DASHBOARD</span></h1>
-                    <p class="text-slate-500 text-sm mt-1 font-mono">Source Log: {{ log_source }}</p>
+                    <h1 class="text-3xl font-black text-white tracking-tighter italic">MESHPINGER <span class="text-blue-500 not-italic">V2</span></h1>
+                    <p class="text-slate-500 text-sm mt-1 font-mono">Log: {{ log_source }}</p>
                 </div>
-                <div class="flex items-center gap-6">
-                    <div class="text-right">
-                        <p class="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold">Node Count</p>
-                        <p class="text-3xl font-mono font-bold text-blue-400">{{ node_count }}</p>
+                <div class="flex gap-4">
+                    <div class="bg-slate-900 border border-slate-800 p-3 rounded-lg text-center min-w-[100px]">
+                        <p class="text-[10px] uppercase text-slate-500 font-bold">Total Nodes</p>
+                        <p class="text-2xl font-mono font-bold text-white">{{ node_count }}</p>
                     </div>
                 </div>
             </header>
 
             <div class="sticky top-6 z-50 bg-slate-900/90 backdrop-blur-lg p-3 rounded-xl border border-slate-700 shadow-2xl mb-8 flex flex-col sm:flex-row gap-3">
-                <div class="relative flex-grow">
-                    <input type="text" x-model="search" placeholder="Filter by hostname..."
-                           class="w-full bg-slate-800 border-slate-600 rounded-lg pl-10 pr-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none transition-all">
-                    <svg class="w-5 h-5 absolute left-3 top-2.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoi
-n="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                <input type="text" x-model="search" placeholder="Search hostname..."
+                       class="flex-grow bg-slate-800 border-slate-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
+                
+                <div class="flex rounded-lg overflow-hidden border border-slate-600 font-bold text-xs">
+                    <button @click="filter = 'all'" :class="filter === 'all' ? 'bg-slate-600 text-white' : 'bg-slate-800 text-slate-400'" class="px-4 py-2">ALL</button>
+                    <button @click="filter = 'red'" :class="filter === 'red' ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-400'" class="px-4 py-2">FAIL</button>
+                    <button @click="filter = 'yellow'" :class="filter === 'yellow' ? 'bg-yellow-600 text-white' : 'bg-slate-800 text-slate-400'" class="px-4 py-2">MIXED</button>
                 </div>
-
-                <button @click="showOnlyFailures = !showOnlyFailures"
-                        :class="showOnlyFailures ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'"
-                        class="px-5 py-2 rounded-lg font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap">
-                    <span x-text="showOnlyFailures ? 'Showing Errors Only' : 'Show All Nodes'"></span>
-                </button>
             </div>
 
-            <div class="grid gap-2">
+            <div class="grid gap-3">
                 {% for node_name, node_data in nodes.items() %}
-                {% set failed = has_failures(node_data) %}
-                <div class="bg-slate-900 border border-slate-800 rounded-lg hover:border-slate-600 transition-colors"
-                     x-show="('{{ node_name }}'.toLowerCase().includes(search.toLowerCase())) && (!showOnlyFailures || {{ 'true' if failed else 'false' }})"
-                     x-data="{ open: false }" x-cloak>
-
-                    <div @click="open = !open" class="cursor-pointer p-4 flex items-center justify-between">
+                {% set status = get_rollup(node_data) %}
+                <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg"
+                     x-show="('{{ node_name }}'.toLowerCase().includes(search.toLowerCase())) && (filter === 'all' || filter === '{{ status }}')"
+                     x-data="{ nodeOpen: false }">
+                    
+                    <div @click="nodeOpen = !nodeOpen" class="cursor-pointer p-4 flex items-center justify-between hover:bg-slate-800/50 transition-colors">
                         <div class="flex items-center gap-4">
-                            <div class="w-2.5 h-2.5 rounded-full {{ 'bg-red-500 animate-pulse' if failed else 'bg-emerald-500' }}"></div>
-                            <span class="font-mono text-md tracking-tight font-semibold {{ 'text-red-400' if failed else 'text-slate-200' }}">{{ node_name }}</span>
+                            <div class="w-3 h-3 rounded-full 
+                                {{ 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' if status == 'green' }}
+                                {{ 'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]' if status == 'yellow' }}
+                                {{ 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] animate-pulse' if status == 'red' }}">
+                            </div>
+                            <span class="text-lg font-bold font-mono tracking-tight">{{ node_name }}</span>
                         </div>
-                        <div class="flex items-center gap-4">
-                             <span class="text-[10px] font-bold text-slate-600 uppercase">{{ 'Issue Detected' if failed else 'Healthy' }}</span>
-                             <svg class="w-4 h-4 text-slate-500 transition-transform duration-200" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0
- 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                        </div>
+                        <svg class="w-5 h-5 text-slate-500 transition-transform" :class="nodeOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M19 9l-7 7-7-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
                     </div>
 
-                    <div x-show="open" class="p-4 bg-black/40 border-t border-slate-800">
-                        <h4 class="text-[10px] font-bold uppercase text-slate-500 mb-2 tracking-widest">Expanded Node Detail</h4>
-                        <pre class="text-[11px] leading-relaxed text-blue-300/80 bg-slate-950 p-4 rounded border border-slate-800 overflow-auto max-h-[500px]">{{ node_data | toj
-son(indent=2) }}</pre>
+                    <div x-show="nodeOpen" x-cloak class="bg-black/30 border-t border-slate-800 p-4 space-y-3">
+                        {% for test_name, test_runs in node_data.get('tests', {}).items() %}
+                            {% for ts, run_data in test_runs.items() %}
+                            <div x-data="{ modOpen: false }" class="border border-slate-700/50 rounded-lg overflow-hidden">
+                                <div @click="modOpen = !modOpen" class="flex items-center justify-between p-3 bg-slate-800/40 cursor-pointer hover:bg-slate-800/80">
+                                    <div class="flex items-center gap-3">
+                                        <span class="text-[10px] px-2 py-0.5 rounded font-black {{ 'bg-emerald-500/20 text-emerald-400' if run_data.status == 'pass' else 'bg-red-500/20 text-red-400' }}">
+                                            {{ run_data.status | upper }}
+                                        </span>
+                                        <span class="text-sm font-semibold text-slate-300">{{ test_name }}</span>
+                                    </div>
+                                    <span class="text-[10px] font-mono text-slate-500">{{ ts }}</span>
+                                </div>
+                                <div x-show="modOpen" class="p-3 bg-slate-950 text-[11px] font-mono border-t border-slate-700">
+                                    <pre class="text-blue-300/80 overflow-auto max-h-96">{{ run_data | tojson(indent=2) }}</pre>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% endfor %}
                     </div>
                 </div>
                 {% endfor %}
             </div>
 
             <footer class="mt-12 text-center text-slate-600 text-xs font-mono">
-                Generated by Meshpinger v2 Aggregator | {{ timestamp }}
+                Report Generated at {{ timestamp }} | Data Source: {{ log_source }}
             </footer>
         </div>
     </body>
     </html>
     """
-
-    def has_failures(node_data):
-        try:
-            for test_cat in node_data.get('tests', {}).values():
-                for test_run in test_cat.values():
-                    if test_run.get('failures'):
-                        return True
-        except: pass
-        return False
 
     template = Template(template_str)
     html_output = template.render(
@@ -135,7 +160,7 @@ son(indent=2) }}</pre>
         node_count=len(data),
         timestamp=timestamp,
         log_source=os.path.basename(latest_log),
-        has_failures=has_failures
+        get_rollup=get_node_rollup_status
     )
 
     with open(output_path, 'w') as f:
