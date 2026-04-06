@@ -9,7 +9,7 @@
 
 - name: Deploy eterrors.py script
   ansible.builtin.copy:
-    src: eterrors.py
+    src: pciedegraded.py
     dest: /var/tmp/pciedegraded/
     mode: '0755'
 
