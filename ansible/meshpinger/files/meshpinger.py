@@ -61,15 +61,11 @@ def ping_worker(q, hostname, fail_only, successes, failures, lock):
             success = (result.returncode == 0)
             
             if success:
-                # Print to console for real-time tracking
                 print(f"{hostname} | [PASS] {source_ip} -> {target_ip}")
-                
-                # Only record success to JSON if --fail-only is NOT set
                 if not fail_only:
                     with lock:
                         successes.append({"src": source_ip, "dst": target_ip})
             else:
-                # Attempt to parse a meaningful error from ping output
                 error_msg = "Ping failed"
                 if "100% packet loss" in result.stdout:
                     error_msg = "Timeout / 100% packet loss"
@@ -103,12 +99,10 @@ def main():
         print(f"Error: Hostname '{hostname}' not found in {args.yaml} (or no backend IPs defined)")
         return
 
-    # Tracking variables for JSON payload
     successes = []
     failures = []
     result_lock = threading.Lock()
     
-    # Execution setup
     q = Queue()
     for target in remote_ips:
         for source in local_ips:
@@ -117,7 +111,6 @@ def main():
     total_tasks = q.qsize()
     print(f"Node: {hostname} | Mode: {'Failures Only' if args.fail_only else 'All'} | Tests: {total_tasks}")
 
-    # Spin up threads
     for _ in range(min(args.threads, total_tasks)):
         t = threading.Thread(
             target=ping_worker, 
@@ -128,6 +121,10 @@ def main():
 
     q.join()
 
+    # Determine global status
+    # If the failures list has any entries, the whole test is "fail"
+    overall_status = "fail" if failures else "pass"
+
     # Build the JSON Output Structure
     timestamp = datetime.now().strftime("%Y%m%d-%H%M")
     json_filename = f"{hostname}-pingtest-{timestamp}.json"
@@ -137,6 +134,7 @@ def main():
             "tests": {
                 "backendpingtest": {
                     timestamp: {
+                        "status": overall_status,  # <-- Added high-level KV
                         "successes": successes,
                         "failures": failures
                     }
@@ -145,11 +143,11 @@ def main():
         }
     }
 
-    # Dump to JSON file
     with open(json_filename, 'w') as jf:
         json.dump(output_data, jf, indent=2)
 
-    print(f"\nComplete. JSON results saved to {json_filename}")
+    print(f"\nComplete. Overall Status: {overall_status.upper()}")
+    print(f"JSON results saved to {json_filename}")
 
 if __name__ == "__main__":
     main()
