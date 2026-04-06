@@ -25,11 +25,11 @@
     state: absent
   loop: "{{ old_logs.files }}"
 
-- name: Execute eterrors script
+- name: Execute pciedegraded script
   ansible.builtin.shell:
-    cmd: python3 eterrors.py
+    cmd: python3 pciedegraded.py
     chdir: /var/tmp/pciedegraded
-  register: eterrors_run
+  register: pciedegraded_run
   changed_when: true
 
 - name: Find the generated eterrors JSON result file
