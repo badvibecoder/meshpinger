@@ -2,6 +2,12 @@
 
 Need to update.
 
+to do:
+
+- fix pciedegraded to include checks for multiple brands (pensando/mellanox/broadcom)
+- add pensando specific nic id to gid to eth id to ionic id to dscp setup checker
+    - validate there isnt already a nicctl command for this, you might have wasted time
+
 This started as a backend all to all ping utility to scale reachablability testing across the backend nics of large clusters. 
 
 It has since morphed into an ansible setup to run modules as roles and then gather json logs, aggregate those logs and present a report on the status of the cluster.
